@@ -3,6 +3,7 @@
 *  Copyright (c) John Sundell 2019
 *  MIT license, see LICENSE file for details
 */
+import Foundation
 
 ///
 /// A parser used to convert Markdown text into HTML.
@@ -16,11 +17,17 @@
 /// a `Modifier` using the `addModifier` method.
 public struct MarkdownParser {
     private var modifiers: ModifierCollection
+    private var attributesModifiers: AttributesModifierCollection
+    private var defaultAttributes: Attributes
 
     /// Initialize an instance, optionally passing an array
     /// of modifiers used to customize the parsing process.
-    public init(modifiers: [Modifier] = []) {
+    public init(modifiers: [Modifier] = [],
+                attributesModifiers: [AttributesModifier] = [],
+                defaultAttributes: Attributes = [:]) {
         self.modifiers = ModifierCollection(modifiers: modifiers)
+        self.attributesModifiers = AttributesModifierCollection(modifiers: attributesModifiers)
+        self.defaultAttributes = defaultAttributes
     }
 
     /// Add a modifier to this parser, which can be used to
@@ -29,11 +36,19 @@ public struct MarkdownParser {
         modifiers.insert(modifier)
     }
 
+    public mutating func addAttributesModifier(_ modifier: AttributesModifier) {
+        attributesModifiers.insert(modifier)
+    }
+
     /// Convert a Markdown string into HTML, discarding any metadata
     /// found in the process. To preserve the Markdown's metadata,
     /// use the `parse` method instead.
     public func html(from markdown: String) -> String {
         parse(markdown).html
+    }
+
+    public func attributedString(from markdown: String) -> NSAttributedString {
+        parse(markdown).attributedString
     }
 
     /// Parse a Markdown string into a `Markdown` value, which contains
@@ -103,8 +118,17 @@ public struct MarkdownParser {
             result.append(html)
         }
 
+        let attributedString = NSMutableAttributedString(string: markdown, attributes: defaultAttributes)
+
+        fragments.forEach {
+            let attributes = $0.fragment.attributes(rawString: $0.rawString,
+                                                    applyingModifiers: attributesModifiers)
+            attributedString.addAttributes(attributes, range: $0.range)
+        }
+
         return Markdown(
             html: html,
+            attributedString: attributedString,
             titleHeading: titleHeading,
             metadata: metadata?.values ?? [:]
         )
@@ -115,6 +139,7 @@ private extension MarkdownParser {
     struct ParsedFragment {
         var fragment: Fragment
         var rawString: Substring
+        var range: NSRange
     }
 
     func makeFragment(using closure: (inout Reader) throws -> Fragment,
@@ -122,7 +147,8 @@ private extension MarkdownParser {
         let startIndex = reader.currentIndex
         let fragment = try closure(&reader)
         let rawString = reader.characters(in: startIndex..<reader.currentIndex)
-        return ParsedFragment(fragment: fragment, rawString: rawString)
+        let range = NSRange(startIndex..<reader.currentIndex, in: reader.string)
+        return ParsedFragment(fragment: fragment, rawString: rawString, range: range)
     }
 
     func fragmentType(for character: Character,

@@ -5,7 +5,7 @@
 */
 
 internal struct Reader {
-    private let string: String
+    let string: String
     private(set) var currentIndex: String.Index
 
     init(string: String) {
